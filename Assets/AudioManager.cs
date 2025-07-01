@@ -23,7 +23,6 @@ public class AudioManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-        DontDestroyOnLoad(gameObject);
     }
 
     private void OnEnable()
@@ -37,21 +36,30 @@ public class AudioManager : MonoBehaviour
     }
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+{
+    if (scene.name == "Main")
     {
-        if (scene.name == "Main")
-        {
-            isMainScene = true;
-            StartCoroutine(PlayMainSceneAudioSequence());
-        }
-        else
-        {
-            isMainScene = false;
-            if (musicSource.isPlaying) musicSource.Stop();
-            musicSource.clip = background;
-            musicSource.loop = true;
-            musicSource.Play();
-        }
+        isMainScene = true;
+        isRaceWon = false; // Đã reset nhưng cần đảm bảo nó hoạt động
+        Debug.Log("AudioManager: Reset isRaceWon to false in Main scene");
+        StartCoroutine(PlayMainSceneAudioSequence());
     }
+    else
+    {
+        isMainScene = false;
+        isRaceWon = false;
+        if (musicSource.isPlaying) musicSource.Stop();
+        musicSource.clip = background;
+        musicSource.loop = true;
+        musicSource.Play();
+    }
+}
+
+public void ResetRaceState()
+{
+    isRaceWon = false;
+    Debug.Log("AudioManager: ResetRaceState called, isRaceWon set to false");
+}
 
     private System.Collections.IEnumerator PlayMainSceneAudioSequence()
     {
@@ -72,6 +80,7 @@ public class AudioManager : MonoBehaviour
 
     public void OnWinLineTrigger()
     {
+        Debug.Log("OnWinLineTrigger called, isMainScene: " + isMainScene + ", isRaceWon: " + isRaceWon);
         if (isMainScene && !isRaceWon)
         {
             if (musicSource.isPlaying) musicSource.Stop();

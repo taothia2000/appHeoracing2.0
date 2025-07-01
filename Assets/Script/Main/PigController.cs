@@ -80,7 +80,6 @@ public class PigController : MonoBehaviour
     public void DoubleSpeed()
     {
         speed *= 4f;
-        Debug.Log($"Heo {nameText.text} đã tăng tốc độ lên {speed}");
     }
 
     IEnumerator UpdateSpeedRandomly()
@@ -110,10 +109,12 @@ public class PigController : MonoBehaviour
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        if (other.gameObject.CompareTag("WinLine"))
+        Debug.Log($"Heo {nameText.text} chạm {other.gameObject.name} với tag: {other.gameObject.tag} tại vị trí: {transform.position}");
+        
+        // Check both tag and ensure we're not in the initial spawn phase
+        if (other.gameObject.CompareTag("WinLine") && raceManager.IsRaceStarted() && canMoveForward)
         {
             isMoving = false;
-            Debug.Log($"Heo {nameText.text} chạm WinLine tại vị trí: {transform.position} với collider: {other.name}");
             raceManager.OnPigWin(nameText.text);
         }
     }

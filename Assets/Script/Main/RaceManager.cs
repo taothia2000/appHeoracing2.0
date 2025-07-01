@@ -92,10 +92,28 @@ public class RaceManager : MonoBehaviour
         if (victoryPanel != null) victoryPanel.SetActive(false);
 
         LoadPlayerData();
-        // Gọi SpawnPigs ngay sau khi đảm bảo startPoint được cập nhật
         SpawnPigs();
         StartCoroutine(Countdown());
-        if (winLineInstance == null) StartCoroutine(SpawnWinLineAfterDelay());
+        if (winLineInstance != null)
+    {
+        Destroy(winLineInstance);
+        winLineInstance = null;
+    }
+        
+        StartCoroutine(SpawnWinLineAfterDelay());
+    }
+    
+
+    public void ResetRaceState()
+    {
+        raceStarted = false;
+        isOffsetActive = true;
+        isCameraLocked = false;
+        // Gọi ResetRaceState của AudioManager nếu tồn tại
+        if (audioManager != null)
+        {
+            audioManager.ResetRaceState();
+        }
     }
 
     void LoadPlayerData()
@@ -194,8 +212,7 @@ public class RaceManager : MonoBehaviour
 
             GameObject pig = Instantiate(pigPrefabs[prefabIndex], spawnPos, Quaternion.identity);
             pig.name = $"Pig_{randomizedNames[i]}";
-            Debug.Log($"Spawn heo {pig.name} tại vị trí: {spawnPos}, index spawn: {i}");
-
+            
             BoxCollider2D pigCollider = pig.GetComponent<BoxCollider2D>();
             if (pigCollider == null)
             {
@@ -220,15 +237,13 @@ public class RaceManager : MonoBehaviour
     // Phương thức áp dụng z dựa trên tọa độ Y
     private void ApplyZOrderByYPosition()
     {
-        Debug.Log("Bắt đầu áp dụng z theo Y tại " + System.DateTime.Now.ToString("HH:mm:ss") + " ngày 26/6/2025");
-
+       
         if (pigs == null)
         {
             Debug.LogError("Danh sách pigs là null!");
             return;
         }
-        Debug.Log("Số heo trong danh sách: " + pigs.Count);
-
+        
         // Sắp xếp pigs theo tọa độ Y tăng dần (từ thấp đến cao)
         var sortedPigs = pigs.OrderBy(pig => pig.transform.position.y).ToList();
 
@@ -242,7 +257,6 @@ public class RaceManager : MonoBehaviour
             Vector3 position = sortedPigs[i].transform.position;
             position.z = zValue; // Gán z mới
             sortedPigs[i].transform.position = position;
-            Debug.Log($"Heo {sortedPigs[i].name} - Thứ tự: {rank}, Y={position.y}, z={position.z}");
             zValue += zStep; // Giảm z cho heo tiếp theo
         }
     }
@@ -337,6 +351,7 @@ public class RaceManager : MonoBehaviour
 
     void StartRace()
     {
+        FindObjectOfType<AudioManager>().ResetRaceState();
         raceStarted = true;
         for (int i = 0; i < pigs.Count && i < playerNames.Count; i++)
         {
@@ -378,6 +393,13 @@ public class RaceManager : MonoBehaviour
             winLineInstance.name = "WinLine_Instance";
             SetupWinLine(winLineInstance);
         }
+        else
+        {
+            // Đảm bảo vị trí và collider của winLineInstance được cập nhật
+            winLineInstance.transform.position = spawnPoint.position;
+            winLineInstance.SetActive(true);
+        }
+        Debug.Log("WinLineInstance khởi tạo lại tại: " + winLineInstance.transform.position);
     }
 
     void SetupWinLine(GameObject winLineObj)
@@ -388,7 +410,7 @@ public class RaceManager : MonoBehaviour
             sr = winLineObj.AddComponent<SpriteRenderer>();
         }
         sr.sortingLayerName = "Default";
-        sr.sortingOrder = 10;
+        sr.sortingOrder = -1;
 
         BoxCollider2D collider = winLineObj.GetComponent<BoxCollider2D>();
         if (collider == null)
@@ -456,10 +478,15 @@ public class RaceManager : MonoBehaviour
                 pigController.DoubleSpeed();
             }
         }
+        
     }
 
     public void RestartRace()
     {
+         if (audioManager != null)
+        {
+            audioManager.ResetRaceState();
+        }
         GameObject sceneCanvas = GameObject.Find("Canvas");
         if (sceneCanvas != null)
         {
@@ -691,6 +718,12 @@ public class RaceManager : MonoBehaviour
             
             inputField.gameObject.name = $"InputField_{i}";
             
+            // Mobile input configuration
+            #if UNITY_IOS || UNITY_ANDROID
+            inputField.keyboardType = TouchScreenKeyboardType.Default;
+            inputField.shouldHideMobileInput = false; // Don't use additional input field above keyboard
+            #endif
+            
             RectTransform rectTransform = inputField.GetComponent<RectTransform>();
             if (rectTransform != null)
             {
@@ -871,6 +904,12 @@ public class RaceManager : MonoBehaviour
         InputField newInputField = Instantiate(inputFieldPrefab, container).GetComponent<InputField>();
         newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
 
+        // Mobile input configuration
+        #if UNITY_IOS || UNITY_ANDROID
+        newInputField.keyboardType = TouchScreenKeyboardType.Default;
+        newInputField.shouldHideMobileInput = false; // Important: don't use additional input field above keyboard
+        #endif
+
         // Set up RectTransform
         RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
         if (rectTransform != null)
@@ -927,9 +966,20 @@ public class RaceManager : MonoBehaviour
             }
         }
 
-        // Set up input handling
+        // Set up input handling with mobile support
         newInputField.onEndEdit.RemoveAllListeners();
+        
+        #if UNITY_IOS || UNITY_ANDROID
+        newInputField.onEndEdit.AddListener((text) => {
+            if ((TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text)) || Input.GetKeyDown(KeyCode.Return))
+            {
+                OnInputFieldEndEdit(text, newInputField, errorText);
+            }
+        });
+        #else
         newInputField.onEndEdit.AddListener((text) => OnInputFieldEndEdit(text, newInputField, errorText));
+        #endif
+        
         inputFields.Add(newInputField);
         
         // Focus the field and scroll to it
@@ -938,7 +988,6 @@ public class RaceManager : MonoBehaviour
         
         // Force layout update
         Canvas.ForceUpdateCanvases();
-        
     }
 
     private IEnumerator ScrollToNewInputField(InputField newField)
@@ -954,7 +1003,17 @@ public class RaceManager : MonoBehaviour
 
     private void OnInputFieldEndEdit(string text, InputField currentField, Text errorText)
     {
-        if (Input.GetKeyDown(KeyCode.Return))
+        if (currentField == null) return;
+        
+        bool isReturnKeyPressed = Input.GetKeyDown(KeyCode.Return);
+        bool isMobileKeyboardClosed = false;
+        
+        #if UNITY_IOS || UNITY_ANDROID
+        // On mobile, consider keyboard closing as confirmation
+        isMobileKeyboardClosed = !TouchScreenKeyboard.visible && currentField.touchScreenKeyboard != null;
+        #endif
+        
+        if (isReturnKeyPressed || isMobileKeyboardClosed)
         {
             // Xử lý chuỗi nhập vào
             text = text.Trim();
@@ -1159,7 +1218,11 @@ public class RaceManager : MonoBehaviour
     private IEnumerator FocusInputField(InputField inputField)
     {
         yield return null;
-         if (inputField != null && inputField.gameObject != null)
+        
+        // Ensure screen is settled before activating keyboard
+        yield return new WaitForSeconds(0.1f);
+        
+        if (inputField != null && inputField.gameObject != null)
         {
             inputField.ActivateInputField();
             inputField.Select();
