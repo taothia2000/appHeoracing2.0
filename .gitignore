@@ -1,0 +1,26 @@
+# Các thư mục tạm của Unity
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Pp]ackages/
+/[Pp]ackage[Cc]ache/
+# Các file hệ thống của Unity
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+Assets/psd.psd.meta
+/Assets
+*.meta
