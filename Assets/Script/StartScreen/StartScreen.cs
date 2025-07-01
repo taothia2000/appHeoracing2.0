@@ -147,6 +147,13 @@ public class StartScreen : MonoBehaviour
     InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer);
     newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
 
+    // Mobile Input Configuration
+    #if UNITY_IOS || UNITY_ANDROID
+    // Set keyboard settings for mobile
+    newInputField.keyboardType = TouchScreenKeyboardType.Default;
+    newInputField.shouldHideMobileInput = false; // Important: don't use additional input field above keyboard
+    #endif
+
     RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
     if (rectTransform != null)
     {
@@ -224,17 +231,35 @@ public class StartScreen : MonoBehaviour
         }
     }
 
+    // Handle mobile return key
+    #if UNITY_IOS || UNITY_ANDROID
+    newInputField.onEndEdit.AddListener((text) => {
+        if (TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text))
+        {
+            OnInputFieldEndEdit(text, newInputField, originalSize, inputText);
+        }
+    });
+    #else
     newInputField.onEndEdit.AddListener((text) => OnInputFieldEndEdit(text, newInputField, originalSize, inputText));
-        inputFields.Add(newInputField);
-        StartCoroutine(FocusInputField(newInputField));
-        StartCoroutine(ScrollToNewInputField(newInputField)); 
+    #endif
+
+    inputFields.Add(newInputField);
+    StartCoroutine(FocusInputField(newInputField));
+    StartCoroutine(ScrollToNewInputField(newInputField)); 
 }
 
     IEnumerator FocusInputField(InputField inputField)
     {
         yield return null;
-        inputField.ActivateInputField();
-        inputField.Select();
+        
+        // Ensure screen is settled before activating keyboard
+        yield return new WaitForSeconds(0.1f);
+        
+        if (inputField != null)
+        {
+            inputField.ActivateInputField();
+            inputField.Select();
+        }
     }
 
     void ShowErrorMessage(string message)
@@ -260,7 +285,21 @@ public class StartScreen : MonoBehaviour
     // FIX: Sửa method này để khôi phục đúng kích thước
     void OnInputFieldEndEdit(string text, InputField currentField, Vector2 originalSize, Text inputText)
     {
-        if (Input.GetKeyDown(KeyCode.Return))
+        // Check for empty text or null field
+        if (currentField == null || string.IsNullOrEmpty(text.Trim()))
+        {
+            return;
+        }
+
+        bool isReturnKeyPressed = Input.GetKeyDown(KeyCode.Return);
+        bool isMobileKeyboardClosed = false;
+        
+        #if UNITY_IOS || UNITY_ANDROID
+        // On mobile, consider keyboard closing as confirmation
+        isMobileKeyboardClosed = !TouchScreenKeyboard.visible && currentField.touchScreenKeyboard != null;
+        #endif
+        
+        if (isReturnKeyPressed || isMobileKeyboardClosed)
         {
             if (currentField != null)
             {
@@ -273,7 +312,7 @@ public class StartScreen : MonoBehaviour
                     return;
                 }
 
-                 if (text.Length > MAX_NAME_LENGTH)
+                if (text.Length > MAX_NAME_LENGTH)
                 {
                     ShowErrorMessage($"Tên quá dài! Giới hạn là {MAX_NAME_LENGTH} ký tự.");
                     int index = inputFields.IndexOf(currentField);
@@ -353,6 +392,7 @@ public class StartScreen : MonoBehaviour
             }
         }
     }
+    
     IEnumerator ScrollToNewInputField(InputField newField)
     {
         yield return null; // Chờ 1 frame
