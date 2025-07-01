@@ -5,7 +5,6 @@
 /[Bb]uild/
 /[Bb]uilds/
 /[Ll]ogs/
-/[Pp]ackages/
 /[Pp]ackage[Cc]ache/
 # Các file hệ thống của Unity
 *.csproj
@@ -22,5 +21,4 @@
 *.opendb
 *.VC.db
 Assets/psd.psd.meta
-/Assets
 *.meta
