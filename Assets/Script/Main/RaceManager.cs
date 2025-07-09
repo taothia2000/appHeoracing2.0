@@ -719,9 +719,9 @@ public class RaceManager : MonoBehaviour
             inputField.gameObject.name = $"InputField_{i}";
             
             // Mobile input configuration
-            #if UNITY_IOS || UNITY_ANDROID
+            #if  UNITY_ANDROID
             inputField.keyboardType = TouchScreenKeyboardType.Default;
-            inputField.shouldHideMobileInput = false; // Don't use additional input field above keyboard
+            inputField.shouldHideMobileInput = false; 
             #endif
             
             RectTransform rectTransform = inputField.GetComponent<RectTransform>();
@@ -839,42 +839,287 @@ public class RaceManager : MonoBehaviour
         SceneManager.LoadScene("StartScreen");
     }
     
-    private void OnNhapLaiButtonClicked()
+   private void OnNhapLaiButtonClicked()
+{
+    // Clear và destroy InputField an toàn hơn
+    for (int i = inputFields.Count - 1; i >= 0; i--)
     {
-        // Clear và destroy InputField an toàn hơn
-        for (int i = inputFields.Count - 1; i >= 0; i--)
+        if (inputFields[i] != null && inputFields[i].gameObject != null)
         {
-            if (inputFields[i] != null && inputFields[i].gameObject != null)
-            {
-                Destroy(inputFields[i].gameObject);
-            }
-        }
-        inputFields.Clear();
-        
-        playerNames.Clear();
-        enteredNames.Clear();
-        inputFieldCounter = 0;
-
-        // Tạo một InputField mới
-        if (inputFieldContainer != null && inputFieldPrefab != null)
-        {
-            AddNewInputField(inputFieldContainer, inputFieldPrefab, errorText);
-        }
-        else
-        {
-            Debug.LogError("Không thể tạo InputField mới: inputFieldContainer hoặc inputFieldPrefab là null");
-        }
-
-        // Force layout update
-        if (inputFieldContainer != null)
-        {
-            Canvas.ForceUpdateCanvases();
-            if (scrollRect != null)
-            {
-                scrollRect.verticalNormalizedPosition = 1.0f;
-            }
+            Destroy(inputFields[i].gameObject);
         }
     }
+    inputFields.Clear();
+    
+    playerNames.Clear();
+    enteredNames.Clear();
+    inputFieldCounter = 0;
+
+    // Tạo một InputField đa dòng mới thay vì InputField đơn dòng
+    if (inputFieldContainer != null && inputFieldPrefab != null)
+    {
+        CreateMultiLineInputField();
+    }
+    else
+    {
+        Debug.LogError("Không thể tạo InputField mới: inputFieldContainer hoặc inputFieldPrefab là null");
+    }
+
+    // Force layout update
+    if (inputFieldContainer != null)
+    {
+        Canvas.ForceUpdateCanvases();
+        if (scrollRect != null)
+        {
+            scrollRect.verticalNormalizedPosition = 1.0f;
+        }
+    }
+}
+
+    private void CreateMultiLineInputField()
+{
+    InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
+    newInputField.gameObject.name = $"MainInputField";
+    
+    // Cấu hình InputField cho nhiều dòng
+    newInputField.lineType = InputField.LineType.MultiLineNewline;
+    
+    #if UNITY_ANDROID
+    newInputField.keyboardType = TouchScreenKeyboardType.Default;
+    newInputField.shouldHideMobileInput = false;
+    #endif
+
+    // Set up RectTransform
+    RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
+    if (rectTransform != null)
+    {
+        float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
+        float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
+        float fieldHeight = 100f; // Tăng chiều cao cho MultiLine
+        rectTransform.sizeDelta = new Vector2(fieldWidth, fieldHeight);
+        
+        // Add layout element to ensure height is respected
+        LayoutElement le = newInputField.GetComponent<LayoutElement>();
+        if (le == null)
+        {
+            le = newInputField.gameObject.AddComponent<LayoutElement>();
+        }
+        le.preferredHeight = fieldHeight;
+        le.flexibleWidth = 1;
+    }
+
+    // Configure text component
+    Transform textTransform = newInputField.transform.Find("Text (Legacy)");
+    if (textTransform != null)
+    {
+        Text inputText = textTransform.GetComponent<Text>();
+        if (inputText != null)
+        {
+            inputText.alignment = TextAnchor.MiddleCenter;
+            float fontSize = Mathf.Min(Screen.height * 0.3f, 30f);
+            inputText.fontSize = Mathf.RoundToInt(fontSize);
+        }
+    }
+
+    // Configure placeholder
+    Transform placeholder = newInputField.transform.Find("Placeholder");
+    if (placeholder != null)
+    {
+        Text placeholderText = placeholder.GetComponent<Text>();
+        if (placeholderText != null)
+        {
+            placeholderText.text = "NHẬP DANH SÁCH\n(XUỐNG HÀNG THÊM LỰA CHỌN)";
+            placeholderText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            placeholderText.verticalOverflow = VerticalWrapMode.Overflow;
+            placeholderText.alignment = TextAnchor.MiddleCenter;
+            float fontSize = Mathf.Min(Screen.height * 0.25f, 28f);
+            placeholderText.fontSize = Mathf.RoundToInt(fontSize);
+        }
+    }
+
+    // Set up input handling with mobile support
+    newInputField.onEndEdit.RemoveAllListeners();
+    
+    #if UNITY_ANDROID
+    newInputField.onEndEdit.AddListener((text) => {
+        if ((TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text)) || Input.GetKeyDown(KeyCode.Return))
+        {
+            ProcessNameList(text);
+        }
+    });
+    #else
+    newInputField.onEndEdit.AddListener((text) => ProcessNameList(text));
+    #endif
+    
+    inputFields.Add(newInputField);
+    
+    // Focus the field and scroll to it
+    StartCoroutine(FocusInputField(newInputField));
+}
+
+    private void ProcessNameList(string inputText)
+{
+    if (string.IsNullOrEmpty(inputText.Trim()))
+    {
+        ShowErrorMessage("Danh sách tên không được để trống!", errorText);
+        return;
+    }
+
+    string[] names = inputText.Split(new[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+    List<string> validNames = new List<string>();
+
+    if (names.Length > MAX_INPUT_FIELDS)
+    {
+        ShowErrorMessage($"Danh sách vượt quá {MAX_INPUT_FIELDS} tên!", errorText);
+        return;
+    }
+
+    foreach (string name in names)
+    {
+        string trimmedName = name.Trim();
+        if (string.IsNullOrEmpty(trimmedName))
+        {
+            continue; // Bỏ qua dòng rỗng
+        }
+        if (trimmedName.Length > MAX_NAME_LENGTH)
+        {
+            ShowErrorMessage($"Tên '{trimmedName}' quá dài! Giới hạn là {MAX_NAME_LENGTH} ký tự.", errorText);
+            return;
+        }
+        if (playerNames.Contains(trimmedName) || validNames.Contains(trimmedName))
+        {
+            ShowErrorMessage($"Tên '{trimmedName}' đã tồn tại!", errorText);
+            return;
+        }
+        validNames.Add(trimmedName);
+    }
+
+    if (validNames.Count == 0)
+    {
+        ShowErrorMessage("Không có tên hợp lệ trong danh sách!", errorText);
+        return;
+    }
+
+    // Xóa tất cả InputField cũ
+    for (int i = inputFields.Count - 1; i >= 0; i--)
+    {
+        if (inputFields[i] != null && inputFields[i].gameObject != null)
+        {
+            Destroy(inputFields[i].gameObject);
+        }
+    }
+    inputFields.Clear();
+    playerNames.Clear();
+    
+    // Thêm tên hợp lệ vào playerNames
+    playerNames.AddRange(validNames);
+    inputFieldCounter = 0;
+
+    // Tạo InputField mới cho mỗi tên
+    foreach (string name in validNames)
+    {
+        AddInputFieldForName(name);
+    }
+
+    Canvas.ForceUpdateCanvases();
+    if (scrollRect != null)
+    {
+        scrollRect.verticalNormalizedPosition = 1.0f; // Scroll to top
+    }
+}
+
+    private void AddInputFieldForName(string name)
+{
+    if (inputFieldContainer == null || inputFieldPrefab == null) return;
+    
+    InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
+    newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
+    
+    #if UNITY_ANDROID
+    newInputField.keyboardType = TouchScreenKeyboardType.Default;
+    newInputField.shouldHideMobileInput = false;
+    #endif
+    
+    RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
+    if (rectTransform != null)
+    {
+        float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
+        float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
+        rectTransform.sizeDelta = new Vector2(fieldWidth, 50f);
+        
+        LayoutElement le = newInputField.GetComponent<LayoutElement>();
+        if (le == null)
+        {
+            le = newInputField.gameObject.AddComponent<LayoutElement>();
+        }
+        le.preferredHeight = 50f;
+        le.flexibleWidth = 1;
+    }
+    
+    // Set text
+    newInputField.text = name;
+    newInputField.interactable = false;
+    
+    // Get reference to the original text
+    Transform textTransform = newInputField.transform.Find("Text (Legacy)");
+    Text inputText = null;
+    if (textTransform != null)
+    {
+        inputText = textTransform.GetComponent<Text>();
+        if (inputText != null)
+        {
+            inputText.gameObject.SetActive(false);
+        }
+    }
+    
+    // Create LockedText
+    GameObject newTextObj = new GameObject("LockedText");
+    newTextObj.transform.SetParent(newInputField.transform, false);
+    Text newText = newTextObj.AddComponent<Text>();
+    
+    // Copy properties from original text
+    if (inputText != null)
+    {
+        newText.font = inputText.font;
+        newText.fontSize = inputText.fontSize;
+        newText.fontStyle = inputText.fontStyle;
+        newText.color = inputText.color;
+    }
+    else
+    {
+        newText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        newText.fontSize = 30;
+        newText.color = Color.black;
+    }
+    
+    newText.alignment = TextAnchor.MiddleCenter;
+    newText.text = name;
+    
+    // Configure RectTransform for LockedText
+    RectTransform newTextRect = newText.GetComponent<RectTransform>();
+    newTextRect.anchorMin = new Vector2(0, 0);
+    newTextRect.anchorMax = new Vector2(1, 1);
+    newTextRect.offsetMin = new Vector2(5, 5);
+    newTextRect.offsetMax = new Vector2(-5, -5);
+    
+    // Hide placeholder
+    Transform placeholder = newInputField.transform.Find("Placeholder");
+    if (placeholder != null)
+    {
+        placeholder.gameObject.SetActive(false);
+    }
+    
+    // Disable InputField
+    CanvasGroup canvasGroup = newInputField.GetComponent<CanvasGroup>();
+    if (canvasGroup == null)
+    {
+        canvasGroup = newInputField.gameObject.AddComponent<CanvasGroup>();
+    }
+    canvasGroup.interactable = false;
+    canvasGroup.blocksRaycasts = false;
+    
+    inputFields.Add(newInputField);
+}
 
     private void AddNewInputField(Transform container, GameObject inputFieldPrefab, Text errorText)
     {
@@ -904,10 +1149,9 @@ public class RaceManager : MonoBehaviour
         InputField newInputField = Instantiate(inputFieldPrefab, container).GetComponent<InputField>();
         newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
 
-        // Mobile input configuration
-        #if UNITY_IOS || UNITY_ANDROID
+        #if UNITY_ANDROID
         newInputField.keyboardType = TouchScreenKeyboardType.Default;
-        newInputField.shouldHideMobileInput = false; // Important: don't use additional input field above keyboard
+        newInputField.shouldHideMobileInput = false;
         #endif
 
         // Set up RectTransform
@@ -969,7 +1213,7 @@ public class RaceManager : MonoBehaviour
         // Set up input handling with mobile support
         newInputField.onEndEdit.RemoveAllListeners();
         
-        #if UNITY_IOS || UNITY_ANDROID
+        #if UNITY_ANDROID
         newInputField.onEndEdit.AddListener((text) => {
             if ((TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text)) || Input.GetKeyDown(KeyCode.Return))
             {
@@ -1008,7 +1252,7 @@ public class RaceManager : MonoBehaviour
         bool isReturnKeyPressed = Input.GetKeyDown(KeyCode.Return);
         bool isMobileKeyboardClosed = false;
         
-        #if UNITY_IOS || UNITY_ANDROID
+        #if UNITY_ANDROID
         // On mobile, consider keyboard closing as confirmation
         isMobileKeyboardClosed = !TouchScreenKeyboard.visible && currentField.touchScreenKeyboard != null;
         #endif
