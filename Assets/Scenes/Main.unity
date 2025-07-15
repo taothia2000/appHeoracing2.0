@@ -306,7 +306,7 @@ MonoBehaviour:
   victoryText: {fileID: 1126510892}
   countdownText: {fileID: 270351525}
   spawnArea: {fileID: 1959995763}
-  backgroundOffsetSpeed: 0.5
+  backgroundOffsetSpeed: 0.2
   winLineMoveSpeed: 5
   winLineSpawnDelay: 10
   cameraFollowOffset: 5

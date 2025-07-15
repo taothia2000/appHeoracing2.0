@@ -970,7 +970,7 @@ public class RaceManager : MonoBehaviour
 
     if (names.Length > MAX_INPUT_FIELDS)
     {
-        ShowErrorMessage($"Danh sách vượt quá {MAX_INPUT_FIELDS} tên!", errorText);
+        ShowErrorMessage($"Tối đa chỉ được {MAX_INPUT_FIELDS} tên!", errorText);
         return;
     }
 
