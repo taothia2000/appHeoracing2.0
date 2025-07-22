@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 556880074946855954}
   - component: {fileID: 3510021454110353038}
   - component: {fileID: -2507508411019208181}
+  - component: {fileID: 3185003337305494044}
   m_Layer: 0
   m_Name: pig 6
   m_TagString: Untagged
@@ -201,3 +202,16 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 0
+--- !u!114 &3185003337305494044
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2962102437206331992}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 266e983c5d4913d498d00378d25daac7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  customFont: {fileID: 11400000, guid: f96cce5c791dd514f9c79a578c760245, type: 2}

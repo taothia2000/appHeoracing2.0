@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 4394231492118232315}
   - component: {fileID: 4644526247843165948}
   - component: {fileID: -7111008811887438133}
+  - component: {fileID: 2319395665524019325}
   m_Layer: 0
   m_Name: pig 11
   m_TagString: Untagged
@@ -201,3 +202,16 @@ BoxCollider2D:
   serializedVersion: 2
   m_Size: {x: 3.568883, y: 4.1598525}
   m_EdgeRadius: 0
+--- !u!114 &2319395665524019325
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2292402645893826543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 266e983c5d4913d498d00378d25daac7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  customFont: {fileID: 11400000, guid: f96cce5c791dd514f9c79a578c760245, type: 2}

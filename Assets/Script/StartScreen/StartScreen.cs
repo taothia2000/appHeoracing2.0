@@ -17,7 +17,7 @@ public class StartScreen : MonoBehaviour
     public InputField inputFieldPrefab;
     public Text errorText;
     private const int MAX_NAME_LENGTH = 10;
-    private const int MAX_NAMES = 70; // Giới hạn 70 tên
+    private const int MAX_NAMES = 100;
     private List<InputField> inputFields = new List<InputField>();
     private List<string> enteredNames = new List<string>();
     private int inputFieldCounter = 0;
@@ -208,7 +208,7 @@ public class StartScreen : MonoBehaviour
 
         if (names.Length > MAX_NAMES)
         {
-            ShowErrorMessage($"Danh sách vượt quá {MAX_NAMES} tên!");
+            ShowErrorMessage($"Tối đa chỉ được {MAX_NAMES} tên!");
             return;
         }
 

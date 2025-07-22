@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Linq;
+using TMPro;
 
 public class RaceManager : MonoBehaviour
 {
@@ -17,7 +18,7 @@ public class RaceManager : MonoBehaviour
 
     [Header("UI References")]
     public GameObject victoryPanel;
-    public Text victoryText;
+    public TextMeshProUGUI victoryText;
     public Text countdownText;
     public BoxCollider2D spawnArea;
     
@@ -970,7 +971,7 @@ public class RaceManager : MonoBehaviour
 
     if (names.Length > MAX_INPUT_FIELDS)
     {
-        ShowErrorMessage($"Danh sách vượt quá {MAX_INPUT_FIELDS} tên!", errorText);
+        ShowErrorMessage($"Tối đa chỉ được {MAX_INPUT_FIELDS} tên!", errorText);
         return;
     }
 
