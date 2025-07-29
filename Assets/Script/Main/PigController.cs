@@ -60,7 +60,7 @@ public class PigController : MonoBehaviour
             Debug.LogWarning("Font không được gán trong Inspector! Sử dụng font mặc định Arial.");
             nameText.font = TMP_FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")); // Fallback mặc định
         }
-        nameText.fontSize = 60;
+        nameText.fontSize = 200; // Tăng gấp đôi từ 60 lên 120
         nameText.alignment = TextAlignmentOptions.Center;
 
         // Màu sắc ngẫu nhiên
@@ -127,29 +127,29 @@ public class PigController : MonoBehaviour
                 int position = GetPigPosition();
                 int totalPigs = raceManager.GetPigs().Count;
 
-                if (Random.value < 0.1f)
+                if (Random.value < 2f)
                 {
                     isUnderPlotTwist = true;
                     float originalSpeed = speed;
 
                     if (position == 1)
                     {
-                        speed = baseSpeed * 0.5f;
-                        Debug.Log($"Heo {nameText.text} dẫn đầu bị giảm tốc độ xuống {speed}!");
-                        yield return new WaitForSeconds(3f);
+                        speed = baseSpeed * 0.2f;
+                        Debug.Log($"Heo {nameText.text} dẫn ĐẦU bị giảm tốc độ xuống {speed}!");
+                        yield return new WaitForSeconds(5f);
                     }
                     else if (position == totalPigs)
                     {
                         speed = baseSpeed * 2f;
-                        Debug.Log($"Heo {nameText.text} cuối bảng tăng tốc lên {speed}!");
+                        Debug.Log($"Heo {nameText.text} CUỐI bảng tăng tốc lên {speed}!");
                         yield return new WaitForSeconds(2f);
                     }
                     else
                     {
-                        float change = Random.value < 0.5f ? 0.8f : 1.2f;
+                        float change = Random.value < 0.4f ? 0.8f : 1f;
                         speed = baseSpeed * change;
-                        Debug.Log($"Heo {nameText.text} ở giữa thay đổi tốc độ thành {speed}!");
-                        yield return new WaitForSeconds(2.5f);
+                        Debug.Log($"Heo {nameText.text} ở GIỮA thay đổi tốc độ thành {speed}!");
+                        yield return new WaitForSeconds(2f);
                     }
 
                     speed = baseSpeed;
@@ -158,7 +158,7 @@ public class PigController : MonoBehaviour
                 }
             }
 
-            yield return new WaitForSeconds(Random.Range(2f, 5f));
+            yield return new WaitForSeconds(Random.Range(1f, 4f));
         }
     }
 

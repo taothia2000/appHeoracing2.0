@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Linq;
 using TMPro;
+using UnityEngine.Events;
 
 public class RaceManager : MonoBehaviour
 {
@@ -13,18 +14,14 @@ public class RaceManager : MonoBehaviour
     public Transform startPoint;
     public GameObject background; 
     public GameObject winLine; 
-    public Transform spawnPoint; 
-    public Transform stopPoint; 
-
-    [Header("UI References")]
+    public Transform spawnPoint; // Chỉ dùng một spawn point duy nhất
     public GameObject victoryPanel;
     public TextMeshProUGUI victoryText;
-    public Text countdownText;
+    public TextMeshProUGUI countdownText;
     public BoxCollider2D spawnArea;
     
     [Header("Settings")]
     [SerializeField] private float backgroundOffsetSpeed = 0.1f;
-    [SerializeField] private float winLineMoveSpeed = 5f;
     [SerializeField] private float winLineSpawnDelay = 10f;
     [SerializeField] private float cameraFollowOffset = 5f;
     [SerializeField] private float cameraLerpSpeed = 2f;
@@ -33,6 +30,8 @@ public class RaceManager : MonoBehaviour
     [Header("Prefab Canvas")]
     [SerializeField] private GameObject selectionPanelPrefab; 
     [SerializeField] private GameObject inputFieldPrefab;
+    [SerializeField] private GameObject adPanelPrefab; // Prefab cho pop-up quảng cáo
+    [SerializeField] private Canvas mainCanvas; // Gán Canvas chính từ Inspector
 
     private Transform inputFieldContainer;
     private ScrollRect scrollRect;
@@ -49,12 +48,20 @@ public class RaceManager : MonoBehaviour
     private List<string> enteredNames = new List<string>();
     private int inputFieldCounter = 0;
     private const int MAX_INPUT_FIELDS = 100;
-    private const int MAX_NAME_LENGTH = 10;
     private Text errorText;
     private GameObject dimOverlay;
     private int previousScreenWidth;
     private int previousScreenHeight;
     private SpawnPointController spawnPointController;
+    private ButtonStateManager buttonStateManager; 
+    [SerializeField] private float winLineFollowDuration = 0f;
+    private float winLineFollowTimer = 0f;
+    private bool isWinLineFollowing = true; 
+    private CanvasGroup adPanelInstance; // Instance của pop-up quảng cáo
+    private TextMeshProUGUI adCountdownText; // TextMeshPro để hiển thị đếm ngược
+    private Button adCloseButton; // Nút thoát quảng cáo
+    private int sceneLoadCount = 0; // Đếm số lần load scene "Main"
+    private const int AD_TRIGGER_COUNT = 3; // Hiển thị quảng cáo sau 3 lần load
 
     void Start()
     {
@@ -65,19 +72,32 @@ public class RaceManager : MonoBehaviour
             return;
         }
 
-        // Tìm SpawnPointController
-        spawnPointController = FindObjectOfType<SpawnPointController>();
-        if (spawnPointController == null)
-        {
-            Debug.LogError("SpawnPointController không được tìm thấy!");
-            return;
-        }
-
         previousScreenWidth = Screen.width;
         previousScreenHeight = Screen.height;
 
-        // Bắt đầu khởi tạo nhưng trì hoãn SpawnPigs
-        StartCoroutine(InitializeRaceWithDelay());
+        // Tìm ButtonStateManager
+        buttonStateManager = FindObjectOfType<ButtonStateManager>();
+
+        // Debug log lựa chọn button từ StartScreen
+        string selectedButton = PlayerPrefs.GetString("SelectedButtonForGame", "default");
+        Debug.Log($"Loaded scene with selected button: {selectedButton}");
+
+        // Tăng số lần load scene và lưu vào PlayerPrefs
+        sceneLoadCount = PlayerPrefs.GetInt("SceneLoadCount", 0) + 1;
+        PlayerPrefs.SetInt("SceneLoadCount", sceneLoadCount);
+        PlayerPrefs.Save();
+        Debug.Log($"Scene load count: {sceneLoadCount}");
+
+        // Kiểm tra nếu cần hiển thị quảng cáo
+        if (sceneLoadCount >= AD_TRIGGER_COUNT)
+        {
+            StartCoroutine(ShowAdPanel());
+        }
+        else
+        {
+            // Bắt đầu khởi tạo nhưng trì hoãn SpawnPigs
+            StartCoroutine(InitializeRaceWithDelay());
+        }
     }
 
     IEnumerator InitializeRaceWithDelay()
@@ -96,20 +116,21 @@ public class RaceManager : MonoBehaviour
         SpawnPigs();
         StartCoroutine(Countdown());
         if (winLineInstance != null)
-    {
-        Destroy(winLineInstance);
-        winLineInstance = null;
-    }
+        {
+            Destroy(winLineInstance);
+            winLineInstance = null;
+        }
         
         StartCoroutine(SpawnWinLineAfterDelay());
     }
     
-
     public void ResetRaceState()
     {
         raceStarted = false;
         isOffsetActive = true;
         isCameraLocked = false;
+        isWinLineFollowing = true;
+        winLineFollowTimer = 0f;
         // Gọi ResetRaceState của AudioManager nếu tồn tại
         if (audioManager != null)
         {
@@ -238,7 +259,6 @@ public class RaceManager : MonoBehaviour
     // Phương thức áp dụng z dựa trên tọa độ Y
     private void ApplyZOrderByYPosition()
     {
-       
         if (pigs == null)
         {
             Debug.LogError("Danh sách pigs là null!");
@@ -292,6 +312,36 @@ public class RaceManager : MonoBehaviour
     void LateUpdate()
     {
         UpdateCameraPosition();
+        UpdateWinLinePosition();
+    }
+
+    void UpdateWinLinePosition()
+    {
+        // Only update if race has started, win line exists, and is in follow mode
+        if (!raceStarted || winLineInstance == null || !isWinLineFollowing) return;
+        
+        // Update the timer
+        winLineFollowTimer += Time.deltaTime;
+        
+        // Check if we should still be following
+        if (winLineFollowTimer >= winLineFollowDuration)
+        {
+            isWinLineFollowing = false;
+            Debug.Log($"Win line stopped following at position: {winLineInstance.transform.position} after {winLineFollowDuration} seconds");
+            return;
+        }
+        
+        // Move the win line with the camera
+        Vector3 winLinePos = winLineInstance.transform.position;
+        float cameraX = mainCamera.transform.position.x;
+        
+        // Calculate the target position for the win line (just ahead of the camera view)
+        float viewportWidth = mainCamera.orthographicSize * mainCamera.aspect * 2;
+        float targetX = cameraX + (viewportWidth * 0.6f); // Position it near the right edge of the screen
+        
+        // Set the win line position
+        winLinePos.x = targetX;
+        winLineInstance.transform.position = winLinePos;
     }
 
     void UpdateCameraPosition()
@@ -337,16 +387,166 @@ public class RaceManager : MonoBehaviour
             yield break;
         }
 
-        countdownText.gameObject.SetActive(true);
-        for (int i = 3; i > 0; i--)
+        // Chỉ làm việc với TextMeshPro
+        TextMeshProUGUI tmpText = countdownText as TextMeshProUGUI;
+        if (tmpText == null)
         {
-            countdownText.text = i.ToString();
-            yield return new WaitForSeconds(1f);
+            Debug.LogError("CountdownText phải là TextMeshProUGUI!");
+            yield break;
         }
 
-        countdownText.text = "Bắt đầu!";
+        // Lưu các thiết lập gốc để khôi phục
+        TMP_FontAsset originalFont = tmpText.font;
+        float originalFontSize = tmpText.fontSize;
+        FontStyles originalFontStyle = tmpText.fontStyle;
+        Color originalColor = tmpText.color;
+        Material originalMaterial = tmpText.fontMaterial;
+        bool originalAutoSizing = tmpText.enableAutoSizing;
+        bool originalGradient = tmpText.enableVertexGradient;
+        VertexGradient originalVertexGradient = tmpText.colorGradient;
+        float originalOutlineWidth = tmpText.outlineWidth;
+        Color originalOutlineColor = tmpText.outlineColor;
+        
+        // Thiết lập font từ victoryText nếu có
+        if (victoryText != null && victoryText is TextMeshProUGUI)
+        {
+            TextMeshProUGUI victoryTMP = victoryText as TextMeshProUGUI;
+            if (victoryTMP.font != null)
+            {
+                tmpText.font = victoryTMP.font;
+            }
+        }
+        else
+        {
+            // Tìm TMP font asset
+            TMP_FontAsset cadenaFont = Resources.Load<TMP_FontAsset>("Fonts/iciel Cadena SDF");
+            if (cadenaFont != null)
+            {
+                tmpText.font = cadenaFont;
+            }
+        }
+        
+        // Thiết lập style
+        tmpText.fontSize = Mathf.Max(tmpText.fontSize, 72);
+        tmpText.fontStyle = FontStyles.Bold;
+        
+        // Thiết lập gradient vàng cam
+        tmpText.enableVertexGradient = true;
+        VertexGradient gradient = new VertexGradient(
+            new Color(1f, 0.9f, 0.3f), // Top left: vàng sáng
+            new Color(1f, 0.8f, 0.2f), // Top right: vàng
+            new Color(1f, 0.6f, 0.1f), // Bottom left: cam
+            new Color(0.9f, 0.5f, 0.0f)  // Bottom right: cam đậm
+        );
+        tmpText.colorGradient = gradient;
+        
+        // Thiết lập outline (viền trắng)
+        tmpText.outlineWidth = 0.2f;
+        tmpText.outlineColor = Color.white;
+        
+        // Thiết lập auto sizing
+        tmpText.enableAutoSizing = true;
+        tmpText.fontSizeMin = 36;
+        tmpText.fontSizeMax = 120;
+        
+        // Tạo material mới cho shadow/glow effects (tùy chọn)
+        if (tmpText.fontMaterial != null)
+        {
+            Material newMaterial = new Material(tmpText.fontMaterial);
+            
+            // Thiết lập shadow/underlay
+            newMaterial.SetFloat("_UnderlayOffsetX", 0.5f);
+            newMaterial.SetFloat("_UnderlayOffsetY", -0.5f);
+            newMaterial.SetFloat("_UnderlayDilate", 0.5f);
+            newMaterial.SetFloat("_UnderlaySoftness", 0.3f);
+            newMaterial.SetColor("_UnderlayColor", new Color(0.6f, 0.3f, 0.1f, 0.7f));
+            
+            tmpText.fontMaterial = newMaterial;
+        }
+        
+        // Animation countdown
+        tmpText.gameObject.SetActive(true);
+        
+        // Hiệu ứng co giãn cho mỗi số
+        for (int i = 3; i > 0; i--)
+        {
+            tmpText.text = i.ToString();
+            
+            // Animation co giãn
+            RectTransform rectTransform = tmpText.rectTransform;
+            Vector3 originalScale = rectTransform.localScale;
+            
+            // Phóng to
+            float duration = 0.3f;
+            float elapsed = 0;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / duration;
+                rectTransform.localScale = Vector3.Lerp(originalScale, originalScale * 1.3f, t);
+                yield return null;
+            }
+            
+            // Thu nhỏ
+            elapsed = 0;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / duration;
+                rectTransform.localScale = Vector3.Lerp(originalScale * 1.3f, originalScale, t);
+                yield return null;
+            }
+            
+            rectTransform.localScale = originalScale;
+            yield return new WaitForSeconds(0.4f);
+        }
+        
+        // Hiệu ứng đặc biệt cho "Go!!!"
+        tmpText.text = "Go!!!";
+        
+        RectTransform goRectTransform = tmpText.rectTransform;
+        Vector3 goOriginalScale = goRectTransform.localScale;
+        
+        // Phóng to nhanh
+        float goDuration = 0.2f;
+        float goElapsed = 0;
+        while (goElapsed < goDuration)
+        {
+            goElapsed += Time.deltaTime;
+            float t = goElapsed / goDuration;
+            goRectTransform.localScale = Vector3.Lerp(goOriginalScale, goOriginalScale * 1.5f, t);
+            yield return null;
+        }
+        
+        // Rung lắc
+        goElapsed = 0;
+        float shakeDuration = 0.3f;
+        Vector3 basePosition = goRectTransform.localPosition;
+        while (goElapsed < shakeDuration)
+        {
+            goElapsed += Time.deltaTime;
+            float xOffset = Random.Range(-5f, 5f);
+            float yOffset = Random.Range(-5f, 5f);
+            goRectTransform.localPosition = basePosition + new Vector3(xOffset, yOffset, 0);
+            yield return null;
+        }
+        goRectTransform.localPosition = basePosition;
+        
         yield return new WaitForSeconds(0.5f);
-        countdownText.gameObject.SetActive(false);
+        
+        // Khôi phục thiết lập gốc
+        tmpText.font = originalFont;
+        tmpText.fontSize = originalFontSize;
+        tmpText.fontStyle = originalFontStyle;
+        tmpText.color = originalColor;
+        tmpText.fontMaterial = originalMaterial;
+        tmpText.enableAutoSizing = originalAutoSizing;
+        tmpText.enableVertexGradient = originalGradient;
+        tmpText.colorGradient = originalVertexGradient;
+        tmpText.outlineWidth = originalOutlineWidth;
+        tmpText.outlineColor = originalOutlineColor;
+        
+        tmpText.gameObject.SetActive(false);
         StartRace();
     }
 
@@ -354,6 +554,8 @@ public class RaceManager : MonoBehaviour
     {
         FindObjectOfType<AudioManager>().ResetRaceState();
         raceStarted = true;
+        isWinLineFollowing = true; // Bật chế độ follow cho win line
+        winLineFollowTimer = 0f; // Reset timer
         for (int i = 0; i < pigs.Count && i < playerNames.Count; i++)
         {
             PigController pigController = pigs[i].GetComponent<PigController>();
@@ -369,6 +571,29 @@ public class RaceManager : MonoBehaviour
     {
         yield return new WaitForSeconds(winLineSpawnDelay);
         SpawnWinLine();
+
+        // Set the win line follow duration based on the selected button
+        string selectedButton = PlayerPrefs.GetString("SelectedButtonForGame", "default");
+        switch (selectedButton)
+        {
+            case "bt10s":
+                winLineFollowDuration = 10f;
+                break;
+            case "bt20s":
+                winLineFollowDuration = 20f;
+                break;
+            case "bt30s":
+                winLineFollowDuration = 30f;
+                break;
+            default:
+                winLineFollowDuration = 10f;
+                break;
+        }
+
+        // Reset the timer and set the win line to follow mode
+        winLineFollowTimer = 0f;
+        isWinLineFollowing = true;
+
         foreach (GameObject pig in pigs)
         {
             PigController pigController = pig.GetComponent<PigController>();
@@ -381,12 +606,20 @@ public class RaceManager : MonoBehaviour
 
     void SpawnWinLine()
     {
-        if (winLine == null || spawnPoint == null)
+        if (winLine == null)
         {
-            Debug.LogError("WinLine prefab hoặc spawnPoint chưa được gán!");
+            Debug.LogError("WinLine prefab chưa được gán!");
             return;
         }
 
+        if (spawnPoint == null)
+        {
+            Debug.LogError("Spawn point chưa được gán!");
+            return;
+        }
+
+        // Nếu đã có win line instance, chỉ cần đặt lại vị trí
+        // Nếu chưa có, tạo mới instance
         if (winLineInstance == null)
         {
             winLineInstance = Instantiate(winLine, spawnPoint.position, Quaternion.identity);
@@ -396,11 +629,15 @@ public class RaceManager : MonoBehaviour
         }
         else
         {
-            // Đảm bảo vị trí và collider của winLineInstance được cập nhật
             winLineInstance.transform.position = spawnPoint.position;
             winLineInstance.SetActive(true);
         }
-        Debug.Log("WinLineInstance khởi tạo lại tại: " + winLineInstance.transform.position);
+        
+        // Đặt lại trạng thái follow
+        isWinLineFollowing = false; // Không di chuyển theo camera ngay
+        winLineFollowTimer = 0f;
+        
+        Debug.Log($"WinLineInstance khởi tạo tại: {winLineInstance.transform.position}");
     }
 
     void SetupWinLine(GameObject winLineObj)
@@ -479,12 +716,11 @@ public class RaceManager : MonoBehaviour
                 pigController.DoubleSpeed();
             }
         }
-        
     }
 
     public void RestartRace()
     {
-         if (audioManager != null)
+        if (audioManager != null)
         {
             audioManager.ResetRaceState();
         }
@@ -573,8 +809,72 @@ public class RaceManager : MonoBehaviour
 
             Button batDauButton = selectionPanelTransform.Find("BắtĐầuBt")?.GetComponent<Button>();
             Button trangChuButton = selectionPanelTransform.Find("TrangChủBt")?.GetComponent<Button>();
-            Button nhapLaiButton = selectionPanelTransform.Find("NhậplạiBt")?.GetComponent<Button>();
-            
+            Button nhapLaiButton = selectionPanelTransform.Find("NhậpLạiBt")?.GetComponent<Button>();
+            Button bt10s = selectionPanelTransform.Find("bt10s")?.GetComponent<Button>();
+            Button bt20s = selectionPanelTransform.Find("bt20s")?.GetComponent<Button>();
+            Button bt30s = selectionPanelTransform.Find("bt30s")?.GetComponent<Button>();
+
+            // Tạo hoặc tìm ButtonStateManager trong panel
+            if (buttonStateManager == null)
+            {
+                buttonStateManager = selectionPanelTransform.GetComponentInChildren<ButtonStateManager>();
+                if (buttonStateManager == null)
+                {
+                    GameObject managerObj = new GameObject("ButtonStateManager");
+                    managerObj.transform.SetParent(selectionPanelTransform, false);
+                    buttonStateManager = managerObj.AddComponent<ButtonStateManager>();
+                    // Gán các button cho ButtonStateManager (cần đảm bảo prefab có các button này)
+                    buttonStateManager.bt10s = bt10s;
+                    buttonStateManager.bt20s = bt20s;
+                    buttonStateManager.bt30s = bt30s;
+                    // Khởi tạo sprites (cần gán trong Inspector hoặc thêm logic mặc định)
+                    buttonStateManager.bt10sSprites = new ButtonStateManager.ButtonSprites();
+                    buttonStateManager.bt20sSprites = new ButtonStateManager.ButtonSprites();
+                    buttonStateManager.bt30sSprites = new ButtonStateManager.ButtonSprites();
+                }
+            }
+
+            // Cập nhật trạng thái các button dựa trên PlayerPrefs
+            if (buttonStateManager != null)
+            {
+                string selectedButton = PlayerPrefs.GetString("SelectedButtonForGame", "default");
+                buttonStateManager.SetSelectedButton(selectedButton);
+                Debug.Log($"Đặt trạng thái button trong ShowSelectionPanel: {selectedButton}");
+
+                // Thêm sự kiện click cho các button
+                if (bt10s != null)
+                {
+                    bt10s.onClick.RemoveAllListeners();
+                    bt10s.onClick.AddListener(() => 
+                    {
+                        buttonStateManager.SetSelectedButton("bt10s");
+                        Debug.Log($"Đã chọn bt10s, trạng thái hiện tại: {buttonStateManager.GetSelectedButtonName()}");
+                    });
+                }
+                if (bt20s != null)
+                {
+                    bt20s.onClick.RemoveAllListeners();
+                    bt20s.onClick.AddListener(() => 
+                    {
+                        buttonStateManager.SetSelectedButton("bt20s");
+                        Debug.Log($"Đã chọn bt20s, trạng thái hiện tại: {buttonStateManager.GetSelectedButtonName()}");
+                    });
+                }
+                if (bt30s != null)
+                {
+                    bt30s.onClick.RemoveAllListeners();
+                    bt30s.onClick.AddListener(() => 
+                    {
+                        buttonStateManager.SetSelectedButton("bt30s");
+                        Debug.Log($"Đã chọn bt30s, trạng thái hiện tại: {buttonStateManager.GetSelectedButtonName()}");
+                    });
+                }
+            }
+            else
+            {
+                Debug.LogWarning("ButtonStateManager không được tìm thấy, không thể cập nhật trạng thái button!");
+            }
+
             // Find ScrollView and InputFieldContainer
             Transform scrollViewTransform = selectionPanelTransform.Find("Scroll View");
             if (scrollViewTransform != null)
@@ -588,23 +888,19 @@ public class RaceManager : MonoBehaviour
                         inputFieldContainer = viewportTransform.Find("InputFieldContainer");
                         if (inputFieldContainer == null)
                         {
-                            // Create InputFieldContainer if it doesn't exist
                             GameObject containerObj = new GameObject("InputFieldContainer");
                             containerObj.transform.SetParent(viewportTransform, false);
                             inputFieldContainer = containerObj.transform;
                             
-                            // Set up content for ScrollRect
                             RectTransform containerRect = containerObj.AddComponent<RectTransform>();
                             containerRect.anchorMin = new Vector2(0, 1);
                             containerRect.anchorMax = new Vector2(1, 1);
                             containerRect.pivot = new Vector2(0.5f, 1);
                             containerRect.anchoredPosition = Vector2.zero;
                             
-                            // Add content size fitter
                             ContentSizeFitter csf = containerObj.AddComponent<ContentSizeFitter>();
                             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
                             
-                            // Add vertical layout group
                             VerticalLayoutGroup vlg = containerObj.AddComponent<VerticalLayoutGroup>();
                             vlg.childAlignment = TextAnchor.UpperCenter;
                             vlg.childControlWidth = true;
@@ -613,7 +909,6 @@ public class RaceManager : MonoBehaviour
                             vlg.childForceExpandHeight = false;
                             vlg.spacing = 10f;
                             
-                            // Set as content for ScrollRect
                             scrollRect.content = containerRect;
                         }
                     }
@@ -640,7 +935,6 @@ public class RaceManager : MonoBehaviour
                 nhapLaiButton.onClick.AddListener(OnNhapLaiButtonClicked);
             }
 
-            // Tạo InputField nếu cần
             if (inputFieldContainer != null && inputFields.Count == 0)
             {
                 if (inputFieldPrefab != null)
@@ -664,7 +958,7 @@ public class RaceManager : MonoBehaviour
         }
     }
 
-   private void PopulateSavedNames(Transform container, bool isFromReset = false)
+    private void PopulateSavedNames(Transform container, bool isFromReset = false)
     {
         if (container == null || inputFieldPrefab == null)
         {
@@ -672,7 +966,6 @@ public class RaceManager : MonoBehaviour
             return;
         }
 
-        // Ensure we have a VerticalLayoutGroup for proper layout
         VerticalLayoutGroup layout = container.GetComponent<VerticalLayoutGroup>();
         if (layout == null)
         {
@@ -685,7 +978,6 @@ public class RaceManager : MonoBehaviour
             layout.spacing = 10f;
         }
 
-        // Clear existing fields an toàn hơn
         for (int i = inputFields.Count - 1; i >= 0; i--)
         {
             if (inputFields[i] != null && inputFields[i].gameObject != null)
@@ -695,7 +987,6 @@ public class RaceManager : MonoBehaviour
         }
         inputFields.Clear();
 
-        // Clear remaining children if any
         foreach (Transform child in container)
         {
             if (child != null && child.gameObject != null)
@@ -710,7 +1001,6 @@ public class RaceManager : MonoBehaviour
         {
             InputField inputField = Instantiate(inputFieldPrefab, container).GetComponent<InputField>();
             
-            // Null check sau khi instantiate
             if (inputField == null)
             {
                 Debug.LogError($"Failed to create InputField at index {i}");
@@ -719,10 +1009,9 @@ public class RaceManager : MonoBehaviour
             
             inputField.gameObject.name = $"InputField_{i}";
             
-            // Mobile input configuration
-            #if  UNITY_ANDROID
+            #if UNITY_ANDROID
             inputField.keyboardType = TouchScreenKeyboardType.Default;
-            inputField.shouldHideMobileInput = false; 
+            inputField.shouldHideMobileInput = false;
             #endif
             
             RectTransform rectTransform = inputField.GetComponent<RectTransform>();
@@ -734,17 +1023,15 @@ public class RaceManager : MonoBehaviour
 
             if (i < playerNames.Count)
             {
-                // Hiển thị tên đã lưu và vô hiệu hóa với LockedText
                 string text = playerNames[i];
                 inputField.text = text;
                 inputField.interactable = false;
 
-                // Tạo LockedText
+                // Create LockedText with Best Fit
                 GameObject newTextObj = new GameObject("LockedText");
                 newTextObj.transform.SetParent(inputField.transform, false);
                 Text newText = newTextObj.AddComponent<Text>();
                 
-                // Lấy tham chiếu đến text gốc
                 Transform textTransform = inputField.transform.Find("Text (Legacy)");
                 Text inputText = null;
                 if (textTransform != null)
@@ -753,24 +1040,23 @@ public class RaceManager : MonoBehaviour
                     if (inputText != null)
                     {
                         newText.font = inputText.font;
-                        newText.fontSize = inputText.fontSize;
-                        newText.fontStyle = inputText.fontStyle;
                         newText.color = inputText.color;
                         inputText.gameObject.SetActive(false);
                     }
                 }
                 
-                newText.alignment = TextAnchor.MiddleCenter;
                 newText.text = text;
+                newText.alignment = TextAnchor.MiddleCenter;
+                newText.resizeTextForBestFit = true;
+                newText.resizeTextMinSize = 10;
+                newText.resizeTextMaxSize = 30;
                 
-                // Cấu hình RectTransform cho LockedText
                 RectTransform newTextRect = newText.GetComponent<RectTransform>();
                 newTextRect.anchorMin = new Vector2(0, 0);
                 newTextRect.anchorMax = new Vector2(1, 1);
                 newTextRect.offsetMin = new Vector2(5, 5);
                 newTextRect.offsetMax = new Vector2(-5, -5);
 
-                // Ẩn placeholder
                 Transform placeholder = inputField.transform.Find("Placeholder");
                 if (placeholder != null)
                 {
@@ -787,7 +1073,6 @@ public class RaceManager : MonoBehaviour
             }
             else
             {
-                // Không tạo InputField trống, chỉ xử lý các tên đã lưu
                 Destroy(inputField.gameObject);
                 continue;
             }
@@ -795,11 +1080,10 @@ public class RaceManager : MonoBehaviour
             inputFields.Add(inputField);
         }
 
-        // Force layout update
         Canvas.ForceUpdateCanvases();
         if (scrollRect != null)
         {
-            scrollRect.verticalNormalizedPosition = 1.0f; // Scroll to top
+            scrollRect.verticalNormalizedPosition = 1.0f;
         }
     }
 
@@ -819,7 +1103,22 @@ public class RaceManager : MonoBehaviour
         {
             PlayerPrefs.SetString($"PlayerName_{i}", playerNames[i]);
         }
+
+        string selectedButton;
+        if (buttonStateManager != null)
+        {
+            selectedButton = buttonStateManager.GetSelectedButtonName();
+            Debug.Log($"Trạng thái button trước khi lưu: {selectedButton} (từ buttonStateManager.GetSelectedButtonName())");
+        }
+        else
+        {
+            selectedButton = PlayerPrefs.GetString("SelectedButtonForGame", "default");
+            Debug.LogWarning($"ButtonStateManager là null, sử dụng giá trị từ PlayerPrefs: {selectedButton}");
+        }
+        PlayerPrefs.SetString("SelectedButtonForGame", selectedButton);
+        Debug.Log($"Đã đặt SelectedButtonForGame trong PlayerPrefs: {PlayerPrefs.GetString("SelectedButtonForGame", "default")}");
         PlayerPrefs.Save();
+        Debug.Log($"Sau khi lưu PlayerPrefs, SelectedButtonForGame: {PlayerPrefs.GetString("SelectedButtonForGame", "default")}");
 
         // Ẩn panel và overlay
         if (selectionPanelInstance != null)
@@ -840,287 +1139,283 @@ public class RaceManager : MonoBehaviour
         SceneManager.LoadScene("StartScreen");
     }
     
-   private void OnNhapLaiButtonClicked()
-{
-    // Clear và destroy InputField an toàn hơn
-    for (int i = inputFields.Count - 1; i >= 0; i--)
+    private void OnNhapLaiButtonClicked()
     {
-        if (inputFields[i] != null && inputFields[i].gameObject != null)
+        // Clear và destroy InputField an toàn hơn
+        for (int i = inputFields.Count - 1; i >= 0; i--)
         {
-            Destroy(inputFields[i].gameObject);
+            if (inputFields[i] != null && inputFields[i].gameObject != null)
+            {
+                Destroy(inputFields[i].gameObject);
+            }
+        }
+        inputFields.Clear();
+        
+        playerNames.Clear();
+        enteredNames.Clear();
+        inputFieldCounter = 0;
+
+        // Tạo một InputField đa dòng mới thay vì InputField đơn dòng
+        if (inputFieldContainer != null && inputFieldPrefab != null)
+        {
+            CreateMultiLineInputField();
+        }
+        else
+        {
+            Debug.LogError("Không thể tạo InputField mới: inputFieldContainer hoặc inputFieldPrefab là null");
+        }
+
+        // Force layout update
+        if (inputFieldContainer != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            if (scrollRect != null)
+            {
+                scrollRect.verticalNormalizedPosition = 1.0f;
+            }
         }
     }
-    inputFields.Clear();
-    
-    playerNames.Clear();
-    enteredNames.Clear();
-    inputFieldCounter = 0;
 
-    // Tạo một InputField đa dòng mới thay vì InputField đơn dòng
-    if (inputFieldContainer != null && inputFieldPrefab != null)
+    private void CreateMultiLineInputField()
     {
-        CreateMultiLineInputField();
-    }
-    else
-    {
-        Debug.LogError("Không thể tạo InputField mới: inputFieldContainer hoặc inputFieldPrefab là null");
+        InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
+        newInputField.gameObject.name = $"MainInputField";
+        
+        // Cấu hình InputField cho nhiều dòng
+        newInputField.lineType = InputField.LineType.MultiLineNewline;
+        
+        #if UNITY_ANDROID
+        newInputField.keyboardType = TouchScreenKeyboardType.Default;
+        newInputField.shouldHideMobileInput = false;
+        #endif
+
+        // Set up RectTransform
+        RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
+        if (rectTransform != null)
+        {
+            float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
+            float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
+            float fieldHeight = 100f; // Tăng chiều cao cho MultiLine
+            rectTransform.sizeDelta = new Vector2(fieldWidth, fieldHeight);
+            
+            // Add layout element to ensure height is respected
+            LayoutElement le = newInputField.GetComponent<LayoutElement>();
+            if (le == null)
+            {
+                le = newInputField.gameObject.AddComponent<LayoutElement>();
+            }
+            le.preferredHeight = fieldHeight;
+            le.flexibleWidth = 1;
+        }
+
+        // Configure text component
+        Transform textTransform = newInputField.transform.Find("Text (Legacy)");
+        if (textTransform != null)
+        {
+            Text inputText = textTransform.GetComponent<Text>();
+            if (inputText != null)
+            {
+                inputText.alignment = TextAnchor.MiddleCenter;
+                float fontSize = Mathf.Min(Screen.height * 0.3f, 30f);
+                inputText.fontSize = Mathf.RoundToInt(fontSize);
+            }
+        }
+
+        // Configure placeholder
+        Transform placeholder = newInputField.transform.Find("Placeholder");
+        if (placeholder != null)
+        {
+            Text placeholderText = placeholder.GetComponent<Text>();
+            if (placeholderText != null)
+            {
+                placeholderText.text = "NHẬP DANH SÁCH\n(XUỐNG HÀNG THÊM LỰA CHỌN)";
+                placeholderText.horizontalOverflow = HorizontalWrapMode.Wrap;
+                placeholderText.verticalOverflow = VerticalWrapMode.Overflow;
+                placeholderText.alignment = TextAnchor.MiddleCenter;
+                float fontSize = Mathf.Min(Screen.height * 0.25f, 28f);
+                placeholderText.fontSize = Mathf.RoundToInt(fontSize);
+            }
+        }
+
+        // Set up input handling with mobile support
+        newInputField.onEndEdit.RemoveAllListeners();
+        
+        #if UNITY_ANDROID
+        newInputField.onEndEdit.AddListener((text) => {
+            if ((TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text)) || Input.GetKeyDown(KeyCode.Return))
+            {
+                ProcessNameList(text);
+            }
+        });
+        #else
+        newInputField.onEndEdit.AddListener((text) => ProcessNameList(text));
+        #endif
+        
+        inputFields.Add(newInputField);
+        
+        // Focus the field and scroll to it
+        StartCoroutine(FocusInputField(newInputField));
     }
 
-    // Force layout update
-    if (inputFieldContainer != null)
+    private void ProcessNameList(string inputText)
     {
+        if (string.IsNullOrEmpty(inputText.Trim()))
+        {
+            ShowErrorMessage("Danh sách tên không được để trống!", errorText);
+            return;
+        }
+
+        string[] names = inputText.Split(new[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+        List<string> validNames = new List<string>();
+
+        if (names.Length > MAX_INPUT_FIELDS)
+        {
+            ShowErrorMessage($"Tối đa chỉ được {MAX_INPUT_FIELDS} tên!", errorText);
+            return;
+        }
+
+        foreach (string name in names)
+        {
+            string trimmedName = name.Trim();
+            if (string.IsNullOrEmpty(trimmedName))
+            {
+                continue; // Bỏ qua dòng rỗng
+            }
+            if (playerNames.Contains(trimmedName) || validNames.Contains(trimmedName))
+            {
+                ShowErrorMessage($"Tên '{trimmedName}' đã tồn tại!", errorText);
+                return;
+            }
+            validNames.Add(trimmedName);
+        }
+
+        if (validNames.Count == 0)
+        {
+            ShowErrorMessage("Không có tên hợp lệ trong danh sách!", errorText);
+            return;
+        }
+
+        // Xóa tất cả InputField cũ
+        for (int i = inputFields.Count - 1; i >= 0; i--)
+        {
+            if (inputFields[i] != null && inputFields[i].gameObject != null)
+            {
+                Destroy(inputFields[i].gameObject);
+            }
+        }
+        inputFields.Clear();
+        playerNames.Clear();
+        
+        // Thêm tên hợp lệ vào playerNames
+        playerNames.AddRange(validNames);
+        inputFieldCounter = 0;
+
+        // Tạo InputField mới cho mỗi tên
+        foreach (string name in validNames)
+        {
+            AddInputFieldForName(name);
+        }
+
         Canvas.ForceUpdateCanvases();
         if (scrollRect != null)
         {
-            scrollRect.verticalNormalizedPosition = 1.0f;
+            scrollRect.verticalNormalizedPosition = 1.0f; // Scroll to top
         }
     }
-}
-
-    private void CreateMultiLineInputField()
-{
-    InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
-    newInputField.gameObject.name = $"MainInputField";
-    
-    // Cấu hình InputField cho nhiều dòng
-    newInputField.lineType = InputField.LineType.MultiLineNewline;
-    
-    #if UNITY_ANDROID
-    newInputField.keyboardType = TouchScreenKeyboardType.Default;
-    newInputField.shouldHideMobileInput = false;
-    #endif
-
-    // Set up RectTransform
-    RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
-    if (rectTransform != null)
-    {
-        float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
-        float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
-        float fieldHeight = 100f; // Tăng chiều cao cho MultiLine
-        rectTransform.sizeDelta = new Vector2(fieldWidth, fieldHeight);
-        
-        // Add layout element to ensure height is respected
-        LayoutElement le = newInputField.GetComponent<LayoutElement>();
-        if (le == null)
-        {
-            le = newInputField.gameObject.AddComponent<LayoutElement>();
-        }
-        le.preferredHeight = fieldHeight;
-        le.flexibleWidth = 1;
-    }
-
-    // Configure text component
-    Transform textTransform = newInputField.transform.Find("Text (Legacy)");
-    if (textTransform != null)
-    {
-        Text inputText = textTransform.GetComponent<Text>();
-        if (inputText != null)
-        {
-            inputText.alignment = TextAnchor.MiddleCenter;
-            float fontSize = Mathf.Min(Screen.height * 0.3f, 30f);
-            inputText.fontSize = Mathf.RoundToInt(fontSize);
-        }
-    }
-
-    // Configure placeholder
-    Transform placeholder = newInputField.transform.Find("Placeholder");
-    if (placeholder != null)
-    {
-        Text placeholderText = placeholder.GetComponent<Text>();
-        if (placeholderText != null)
-        {
-            placeholderText.text = "NHẬP DANH SÁCH\n(XUỐNG HÀNG THÊM LỰA CHỌN)";
-            placeholderText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            placeholderText.verticalOverflow = VerticalWrapMode.Overflow;
-            placeholderText.alignment = TextAnchor.MiddleCenter;
-            float fontSize = Mathf.Min(Screen.height * 0.25f, 28f);
-            placeholderText.fontSize = Mathf.RoundToInt(fontSize);
-        }
-    }
-
-    // Set up input handling with mobile support
-    newInputField.onEndEdit.RemoveAllListeners();
-    
-    #if UNITY_ANDROID
-    newInputField.onEndEdit.AddListener((text) => {
-        if ((TouchScreenKeyboard.visible == false && !string.IsNullOrEmpty(text)) || Input.GetKeyDown(KeyCode.Return))
-        {
-            ProcessNameList(text);
-        }
-    });
-    #else
-    newInputField.onEndEdit.AddListener((text) => ProcessNameList(text));
-    #endif
-    
-    inputFields.Add(newInputField);
-    
-    // Focus the field and scroll to it
-    StartCoroutine(FocusInputField(newInputField));
-}
-
-    private void ProcessNameList(string inputText)
-{
-    if (string.IsNullOrEmpty(inputText.Trim()))
-    {
-        ShowErrorMessage("Danh sách tên không được để trống!", errorText);
-        return;
-    }
-
-    string[] names = inputText.Split(new[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
-    List<string> validNames = new List<string>();
-
-    if (names.Length > MAX_INPUT_FIELDS)
-    {
-        ShowErrorMessage($"Tối đa chỉ được {MAX_INPUT_FIELDS} tên!", errorText);
-        return;
-    }
-
-    foreach (string name in names)
-    {
-        string trimmedName = name.Trim();
-        if (string.IsNullOrEmpty(trimmedName))
-        {
-            continue; // Bỏ qua dòng rỗng
-        }
-        if (trimmedName.Length > MAX_NAME_LENGTH)
-        {
-            ShowErrorMessage($"Tên '{trimmedName}' quá dài! Giới hạn là {MAX_NAME_LENGTH} ký tự.", errorText);
-            return;
-        }
-        if (playerNames.Contains(trimmedName) || validNames.Contains(trimmedName))
-        {
-            ShowErrorMessage($"Tên '{trimmedName}' đã tồn tại!", errorText);
-            return;
-        }
-        validNames.Add(trimmedName);
-    }
-
-    if (validNames.Count == 0)
-    {
-        ShowErrorMessage("Không có tên hợp lệ trong danh sách!", errorText);
-        return;
-    }
-
-    // Xóa tất cả InputField cũ
-    for (int i = inputFields.Count - 1; i >= 0; i--)
-    {
-        if (inputFields[i] != null && inputFields[i].gameObject != null)
-        {
-            Destroy(inputFields[i].gameObject);
-        }
-    }
-    inputFields.Clear();
-    playerNames.Clear();
-    
-    // Thêm tên hợp lệ vào playerNames
-    playerNames.AddRange(validNames);
-    inputFieldCounter = 0;
-
-    // Tạo InputField mới cho mỗi tên
-    foreach (string name in validNames)
-    {
-        AddInputFieldForName(name);
-    }
-
-    Canvas.ForceUpdateCanvases();
-    if (scrollRect != null)
-    {
-        scrollRect.verticalNormalizedPosition = 1.0f; // Scroll to top
-    }
-}
 
     private void AddInputFieldForName(string name)
-{
-    if (inputFieldContainer == null || inputFieldPrefab == null) return;
-    
-    InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
-    newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
-    
-    #if UNITY_ANDROID
-    newInputField.keyboardType = TouchScreenKeyboardType.Default;
-    newInputField.shouldHideMobileInput = false;
-    #endif
-    
-    RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
-    if (rectTransform != null)
     {
-        float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
-        float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
-        rectTransform.sizeDelta = new Vector2(fieldWidth, 50f);
+        if (inputFieldContainer == null || inputFieldPrefab == null) return;
         
-        LayoutElement le = newInputField.GetComponent<LayoutElement>();
-        if (le == null)
+        InputField newInputField = Instantiate(inputFieldPrefab, inputFieldContainer).GetComponent<InputField>();
+        newInputField.gameObject.name = $"InputField_{inputFieldCounter++}";
+        
+        #if UNITY_ANDROID
+        newInputField.keyboardType = TouchScreenKeyboardType.Default;
+        newInputField.shouldHideMobileInput = false;
+        #endif
+        
+        RectTransform rectTransform = newInputField.GetComponent<RectTransform>();
+        if (rectTransform != null)
         {
-            le = newInputField.gameObject.AddComponent<LayoutElement>();
+            float containerWidth = inputFieldContainer.GetComponent<RectTransform>().rect.width;
+            float fieldWidth = Mathf.Min(containerWidth * 0.9f, Screen.width * 0.8f);
+            rectTransform.sizeDelta = new Vector2(fieldWidth, 50f);
+            
+            LayoutElement le = newInputField.GetComponent<LayoutElement>();
+            if (le == null)
+            {
+                le = newInputField.gameObject.AddComponent<LayoutElement>();
+            }
+            le.preferredHeight = 50f;
+            le.flexibleWidth = 1;
         }
-        le.preferredHeight = 50f;
-        le.flexibleWidth = 1;
-    }
-    
-    // Set text
-    newInputField.text = name;
-    newInputField.interactable = false;
-    
-    // Get reference to the original text
-    Transform textTransform = newInputField.transform.Find("Text (Legacy)");
-    Text inputText = null;
-    if (textTransform != null)
-    {
-        inputText = textTransform.GetComponent<Text>();
+        
+        // Set text
+        newInputField.text = name;
+        newInputField.interactable = false;
+        
+        // Get reference to the original text
+        Transform textTransform = newInputField.transform.Find("Text (Legacy)");
+        Text inputText = null;
+        if (textTransform != null)
+        {
+            inputText = textTransform.GetComponent<Text>();
+            if (inputText != null)
+            {
+                inputText.gameObject.SetActive(false);
+            }
+        }
+        
+        // Create LockedText with Best Fit
+        GameObject newTextObj = new GameObject("LockedText");
+        newTextObj.transform.SetParent(newInputField.transform, false);
+        Text newText = newTextObj.AddComponent<Text>();
+        
+        // Copy properties from original text with Best Fit
         if (inputText != null)
         {
-            inputText.gameObject.SetActive(false);
+            newText.font = inputText.font;
+            newText.color = inputText.color;
         }
+        else
+        {
+            newText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            newText.color = Color.black;
+        }
+        newText.text = name;
+        newText.alignment = TextAnchor.MiddleCenter;
+        
+        // Enable Best Fit
+        newText.resizeTextForBestFit = true;
+        newText.resizeTextMinSize = 10; // Giới hạn nhỏ nhất
+        newText.resizeTextMaxSize = 30; // Giới hạn lớn nhất
+        
+        // Configure RectTransform for LockedText
+        RectTransform newTextRect = newText.GetComponent<RectTransform>();
+        newTextRect.anchorMin = new Vector2(0, 0);
+        newTextRect.anchorMax = new Vector2(1, 1);
+        newTextRect.offsetMin = new Vector2(5, 5);
+        newTextRect.offsetMax = new Vector2(-5, -5);
+
+        // Hide placeholder
+        Transform placeholder = newInputField.transform.Find("Placeholder");
+        if (placeholder != null)
+        {
+            placeholder.gameObject.SetActive(false);
+        }
+        
+        // Disable InputField
+        CanvasGroup canvasGroup = newInputField.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = newInputField.gameObject.AddComponent<CanvasGroup>();
+        }
+        canvasGroup.interactable = false;
+        canvasGroup.blocksRaycasts = false;
+        
+        inputFields.Add(newInputField);
     }
-    
-    // Create LockedText
-    GameObject newTextObj = new GameObject("LockedText");
-    newTextObj.transform.SetParent(newInputField.transform, false);
-    Text newText = newTextObj.AddComponent<Text>();
-    
-    // Copy properties from original text
-    if (inputText != null)
-    {
-        newText.font = inputText.font;
-        newText.fontSize = inputText.fontSize;
-        newText.fontStyle = inputText.fontStyle;
-        newText.color = inputText.color;
-    }
-    else
-    {
-        newText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        newText.fontSize = 30;
-        newText.color = Color.black;
-    }
-    
-    newText.alignment = TextAnchor.MiddleCenter;
-    newText.text = name;
-    
-    // Configure RectTransform for LockedText
-    RectTransform newTextRect = newText.GetComponent<RectTransform>();
-    newTextRect.anchorMin = new Vector2(0, 0);
-    newTextRect.anchorMax = new Vector2(1, 1);
-    newTextRect.offsetMin = new Vector2(5, 5);
-    newTextRect.offsetMax = new Vector2(-5, -5);
-    
-    // Hide placeholder
-    Transform placeholder = newInputField.transform.Find("Placeholder");
-    if (placeholder != null)
-    {
-        placeholder.gameObject.SetActive(false);
-    }
-    
-    // Disable InputField
-    CanvasGroup canvasGroup = newInputField.GetComponent<CanvasGroup>();
-    if (canvasGroup == null)
-    {
-        canvasGroup = newInputField.gameObject.AddComponent<CanvasGroup>();
-    }
-    canvasGroup.interactable = false;
-    canvasGroup.blocksRaycasts = false;
-    
-    inputFields.Add(newInputField);
-}
 
     private void AddNewInputField(Transform container, GameObject inputFieldPrefab, Text errorText)
     {
@@ -1265,11 +1560,6 @@ public class RaceManager : MonoBehaviour
             if (string.IsNullOrEmpty(text))
             {
                 ShowErrorMessage("Tên không được để trống!", errorText);
-                return;
-            }
-            if (text.Length > MAX_NAME_LENGTH)
-            {
-                ShowErrorMessage($"Tên quá dài! Giới hạn là {MAX_NAME_LENGTH} ký tự.", errorText);
                 return;
             }
             if (playerNames.Contains(text))
@@ -1516,6 +1806,173 @@ public class RaceManager : MonoBehaviour
             }
         }
     }
+
+private IEnumerator ShowAdPanel()
+{
+    if (adPanelPrefab == null)
+    {
+        Debug.LogError("AdPanelPrefab chưa được gán trong Inspector!");
+        StartCoroutine(InitializeRaceWithDelay());
+        yield break;
+    }
+
+    // Tạm dừng game bằng Time.timeScale
+    Time.timeScale = 0f;
+
+    // Lưu trạng thái audio và dừng tất cả AudioSource
+    AudioSource[] audioSources = FindObjectsOfType<AudioSource>();
+    bool[] wasPlayingStates = new bool[audioSources.Length];
+    for (int i = 0; i < audioSources.Length; i++)
+    {
+        wasPlayingStates[i] = audioSources[i].isPlaying;
+        if (audioSources[i].isPlaying)
+        {
+            audioSources[i].Pause(); // Dừng audio
+        }
+    }
+
+    // Tìm Canvas chính trong scene
+    Canvas mainCanvas = FindObjectOfType<Canvas>();
+    if (mainCanvas == null)
+    {
+        Debug.LogError("Không tìm thấy Canvas chính trong scene!");
+        Time.timeScale = 1f;
+        RestoreAudioStates(audioSources, wasPlayingStates); // Khôi phục audio
+        StartCoroutine(InitializeRaceWithDelay());
+        yield break;
+    }
+
+    // Instantiate adPanel vào Canvas chính
+    GameObject panelObj = Instantiate(adPanelPrefab, mainCanvas.transform, false);
+    adPanelInstance = panelObj.GetComponent<CanvasGroup>();
+
+    if (adPanelInstance == null)
+    {
+        Debug.LogError("Không tìm thấy CanvasGroup trong adPanelInstance");
+        Destroy(panelObj);
+        Time.timeScale = 1f;
+        RestoreAudioStates(audioSources, wasPlayingStates); // Khôi phục audio
+        StartCoroutine(InitializeRaceWithDelay());
+        yield break;
+    }
+
+    // Đặt sortingOrder cho panel
+    panelObj.GetComponent<RectTransform>().SetAsLastSibling(); // Đảm bảo hiển thị trên cùng
+    adPanelInstance.gameObject.SetActive(true);
+
+    // Tìm các thành phần trong pop-up
+    adCountdownText = panelObj.GetComponentsInChildren<TextMeshProUGUI>(true)
+        .FirstOrDefault(t => t.gameObject.name == "AdCountdownText");
+    adCloseButton = panelObj.GetComponentsInChildren<Button>(true)
+        .FirstOrDefault(b => b.gameObject.name == "AdCloseButton");
+
+    if (adCountdownText == null || adCloseButton == null)
+    {
+        Debug.LogError("Không tìm thấy AdCountdownText hoặc AdCloseButton trong adPanelPrefab!");
+        Destroy(panelObj);
+        Time.timeScale = 1f;
+        RestoreAudioStates(audioSources, wasPlayingStates); // Khôi phục audio
+        StartCoroutine(InitializeRaceWithDelay());
+        yield break;
+    }
+
+    // Thiết lập hình ảnh quảng cáo (nếu có)
+    Image adImage = panelObj.GetComponentsInChildren<Image>(true)
+        .FirstOrDefault(i => i.gameObject.name == "AdImage");
+    if (adImage != null)
+    {
+        Sprite adSprite = Resources.Load<Sprite>("Ads/AdImage");
+        if (adSprite != null)
+        {
+            adImage.sprite = adSprite;
+        }
+    }
+
+    // Fade in pop-up
+    float fadeDuration = 0.5f;
+    float elapsed = 0f;
+    adPanelInstance.alpha = 0f;
+    adPanelInstance.blocksRaycasts = false;
+    adPanelInstance.interactable = false;
+    while (elapsed < fadeDuration)
+    {
+        elapsed += Time.unscaledDeltaTime;
+        adPanelInstance.alpha = Mathf.Lerp(0f, 1f, elapsed / fadeDuration);
+        yield return null;
+    }
+    adPanelInstance.alpha = 1f;
+    adPanelInstance.blocksRaycasts = true;
+    adPanelInstance.interactable = true;
+
+    // Vô hiệu hóa nút thoát ban đầu
+    adCloseButton.interactable = false;
+
+    // Đếm ngược 5 giây
+    float countdownTime = 5f;
+    while (countdownTime > 0)
+    {
+        adCountdownText.text = $"Tắt quảng cáo sau {Mathf.CeilToInt(countdownTime)}s";
+        yield return new WaitForSecondsRealtime(1f);
+        countdownTime -= 1f;
+    }
+
+    // Kích hoạt nút thoát
+    adCountdownText.text = "Có thể tắt quảng cáo!";
+    adCloseButton.interactable = true;
+
+    // Xóa listener cũ và thêm listener mới
+    adCloseButton.onClick.RemoveAllListeners();
+    adCloseButton.onClick.AddListener(() =>
+    {
+        StartCoroutine(CloseAdPanel(audioSources, wasPlayingStates));
+    });
+}
+
+private IEnumerator CloseAdPanel(AudioSource[] audioSources, bool[] wasPlayingStates)
+{
+    if (adPanelInstance != null)
+    {
+        float fadeDuration = 0.5f;
+        float elapsed = 0f;
+        while (elapsed < fadeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            adPanelInstance.alpha = Mathf.Lerp(1f, 0f, elapsed / fadeDuration);
+            yield return null;
+        }
+        adPanelInstance.gameObject.SetActive(false);
+
+        // Chỉ destroy adPanel(Clone), không ảnh hưởng đến Canvas chính
+        Destroy(adPanelInstance.gameObject);
+
+        // Làm null các tham chiếu để tránh lỗi
+        adPanelInstance = null;
+        adCountdownText = null;
+        adCloseButton = null;
+    }
+
+    // Khôi phục Time.timeScale và phát lại audio
+    Time.timeScale = 1f;
+    RestoreAudioStates(audioSources, wasPlayingStates);
+    PlayerPrefs.SetInt("SceneLoadCount", 1);
+    PlayerPrefs.Save();
+
+    StartCoroutine(InitializeRaceWithDelay());
+}
+
+private void RestoreAudioStates(AudioSource[] audioSources, bool[] wasPlayingStates)
+{
+    for (int i = 0; i < audioSources.Length; i++)
+    {
+        if (audioSources[i] != null) // Kiểm tra null để tránh lỗi
+        {
+            if (wasPlayingStates[i] && !audioSources[i].isPlaying)
+            {
+                audioSources[i].Play(); // Phát lại audio nếu nó đang phát trước khi dừng
+            }
+        }
+    }
+}
 
     public void BackToMenu()
     {
