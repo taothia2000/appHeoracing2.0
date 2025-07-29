@@ -47,32 +47,21 @@ public class SpawnPointController : MonoBehaviour
 
             // Kiểm tra xem object có tag "Starting line" có hiển thị không
             GameObject startingLine = GameObject.FindGameObjectWithTag("Starting line");
-            GameObject WinLine = GameObject.FindGameObjectWithTag("WinLine");
             // Kiểm tra cả 2 objects đều active?
-            if (WinLine == null && startingLine != null && startingLine.activeInHierarchy)
-            {
-                followCamera = false; 
-            }
-
-            // Hoặc kiểm tra WinLine active thay vì startingLine?
-            if (WinLine != null && startingLine != null && WinLine.activeInHierarchy)
+            if (startingLine != null && startingLine.activeInHierarchy)
             {
                 followCamera = false; 
             }
         }
     }
 
-    // Phương thức để lấy vị trí SpawnPoint
-    public Vector3 GetSpawnPosition()
-    {
-        return transform.position;
-    }
+
 
     // Phương thức để reset về vị trí ban đầu
     public void ResetPosition()
     {
         transform.position = initialPosition;
-        followCamera = true; // Cho phép theo dõi camera lại khi reset
+        followCamera = true;
     }
 
     // Phương thức để thiết lập offset từ script khác nếu cần
