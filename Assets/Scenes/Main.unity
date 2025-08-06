@@ -306,14 +306,13 @@ MonoBehaviour:
   countdownText: {fileID: 270351527}
   spawnArea: {fileID: 1959995763}
   backgroundOffsetSpeed: 0.2
-  winLineSpawnDelay: 10
   cameraFollowOffset: 5
   cameraLerpSpeed: 2
   audioManager: {fileID: 1672532071}
   selectionPanelPrefab: {fileID: 6216714431224747017, guid: 142a96342d2d02046bef8b88b24cbbc0, type: 3}
   inputFieldPrefab: {fileID: 2324753264562897266, guid: e6eea6f246f1580468391a4dfcd5d13d, type: 3}
   adPanelPrefab: {fileID: 6002756419837652633, guid: d94a79d765219b448948edb06347acfe, type: 3}
-  mainCanvas: {fileID: 0}
+  mainCanvas: {fileID: 7027775749111840426, guid: 142a96342d2d02046bef8b88b24cbbc0, type: 3}
   winLineFollowDuration: 0
 --- !u!4 &223538031
 Transform:
@@ -770,10 +769,10 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 474888115}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.32318944, y: 0.27775002}
-  m_AnchorMax: {x: 0.70459473, y: 0.6034168}
-  m_AnchoredPosition: {x: 0.6140137, y: 0.39500427}
-  m_SizeDelta: {x: 1.7099915, y: -0.7901001}
+  m_AnchorMin: {x: 0.28100002, y: 0.27983335}
+  m_AnchorMax: {x: 0.718108, y: 0.5992501}
+  m_AnchoredPosition: {x: 0.35679626, y: -1.1048965}
+  m_SizeDelta: {x: 0.07080078, y: 2.2099}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1041323060
 MonoBehaviour:
@@ -824,12 +823,12 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 72
+  m_fontSize: 40
   m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 18
-  m_fontSizeMax: 72
+  m_fontSizeMin: 10
+  m_fontSizeMax: 40
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512

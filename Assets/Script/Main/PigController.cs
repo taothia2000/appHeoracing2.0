@@ -47,7 +47,7 @@ public class PigController : MonoBehaviour
         canvas.sortingLayerName = "UI";
         canvas.sortingOrder = 100;
         RectTransform rect = textObj.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(300, 80);
+        rect.sizeDelta = new Vector2(300, 350);
         rect.localScale = new Vector3(0.01f, 0.01f, 0.01f);
 
         // Gán font từ Inspector hoặc fallback
@@ -60,7 +60,9 @@ public class PigController : MonoBehaviour
             Debug.LogWarning("Font không được gán trong Inspector! Sử dụng font mặc định Arial.");
             nameText.font = TMP_FontAsset.CreateFontAsset(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")); // Fallback mặc định
         }
-        nameText.fontSize = 200; // Tăng gấp đôi từ 60 lên 120
+        nameText.enableAutoSizing = true;
+        nameText.fontSizeMin = 50;
+        nameText.fontSizeMax = 200;
         nameText.alignment = TextAlignmentOptions.Center;
 
         // Màu sắc ngẫu nhiên
@@ -76,13 +78,40 @@ public class PigController : MonoBehaviour
     }
 
     // Các phương thức khác giữ nguyên như cũ
-    public void SetName(string playerName)
+   public void SetName(string playerName)
+{
+    if (nameText != null)
     {
-        if (nameText != null)
-        {
-            nameText.text = playerName;
-        }
+        nameText.text = playerName;
+
+        // Get the RectTransform
+        RectTransform rect = nameText.GetComponent<RectTransform>();
+
+        // Adjust sizeDelta based on name length
+        int nameLength = playerName.Length;
+            if (nameLength <= 5)
+            {
+                // Short names: default size
+                rect.sizeDelta = new Vector2(300, 350);
+                nameText.fontSizeMin = 50;
+                nameText.fontSizeMax = 140;
+            }
+            else if (nameLength <= 10)
+            {
+                // Medium names: slightly larger width
+                rect.sizeDelta = new Vector2(500, 550);
+                nameText.fontSizeMin = 50;
+                nameText.fontSizeMax = 145;
+            }
+            else
+            {
+                // Long names: even larger width
+                rect.sizeDelta = new Vector2(700, 750);
+                nameText.fontSizeMin = 50;
+                nameText.fontSizeMax = 150;
+            }
     }
+}
 
     public void StartInitialMovement()
     {
@@ -135,26 +164,22 @@ public class PigController : MonoBehaviour
                     if (position == 1)
                     {
                         speed = baseSpeed * 0.2f;
-                        Debug.Log($"Heo {nameText.text} dẫn ĐẦU bị giảm tốc độ xuống {speed}!");
                         yield return new WaitForSeconds(5f);
                     }
                     else if (position == totalPigs)
                     {
                         speed = baseSpeed * 2f;
-                        Debug.Log($"Heo {nameText.text} CUỐI bảng tăng tốc lên {speed}!");
                         yield return new WaitForSeconds(2f);
                     }
                     else
                     {
                         float change = Random.value < 0.4f ? 0.8f : 1f;
                         speed = baseSpeed * change;
-                        Debug.Log($"Heo {nameText.text} ở GIỮA thay đổi tốc độ thành {speed}!");
                         yield return new WaitForSeconds(2f);
                     }
 
                     speed = baseSpeed;
                     isUnderPlotTwist = false;
-                    Debug.Log($"Heo {nameText.text} khôi phục tốc độ về {speed}.");
                 }
             }
 
@@ -189,8 +214,6 @@ public class PigController : MonoBehaviour
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        Debug.Log($"Heo {nameText.text} chạm {other.gameObject.name} với tag: {other.gameObject.tag} tại vị trí: {transform.position}");
-        
         if (other.gameObject.CompareTag("WinLine") && raceManager.IsRaceStarted() && canMoveForward)
         {
             isMoving = false;
