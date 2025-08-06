@@ -22,7 +22,6 @@ public class RaceManager : MonoBehaviour
     
     [Header("Settings")]
     [SerializeField] private float backgroundOffsetSpeed = 0.1f;
-    [SerializeField] private float winLineSpawnDelay = 10f;
     [SerializeField] private float cameraFollowOffset = 5f;
     [SerializeField] private float cameraLerpSpeed = 2f;
     [SerializeField] private AudioManager audioManager;
@@ -120,8 +119,8 @@ public class RaceManager : MonoBehaviour
             Destroy(winLineInstance);
             winLineInstance = null;
         }
-        
-        StartCoroutine(SpawnWinLineAfterDelay());
+
+        SpawnWinLineAfterDelay();
     }
     
     public void ResetRaceState()
@@ -567,9 +566,8 @@ public class RaceManager : MonoBehaviour
         }
     }
 
-    IEnumerator SpawnWinLineAfterDelay()
+    void SpawnWinLineAfterDelay()
     {
-        yield return new WaitForSeconds(winLineSpawnDelay);
         SpawnWinLine();
 
         // Set the win line follow duration based on the selected button
@@ -809,7 +807,7 @@ public class RaceManager : MonoBehaviour
 
             Button batDauButton = selectionPanelTransform.Find("BắtĐầuBt")?.GetComponent<Button>();
             Button trangChuButton = selectionPanelTransform.Find("TrangChủBt")?.GetComponent<Button>();
-            Button nhapLaiButton = selectionPanelTransform.Find("NhậpLạiBt")?.GetComponent<Button>();
+            Button nhapLaiButton = selectionPanelTransform.Find("NhậplạiBt")?.GetComponent<Button>();
             Button bt10s = selectionPanelTransform.Find("bt10s")?.GetComponent<Button>();
             Button bt20s = selectionPanelTransform.Find("bt20s")?.GetComponent<Button>();
             Button bt30s = selectionPanelTransform.Find("bt30s")?.GetComponent<Button>();
